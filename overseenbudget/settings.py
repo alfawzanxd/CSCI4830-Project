@@ -25,7 +25,8 @@ SECRET_KEY = 'django-insecure-+w@q#(!q#nye4en$5tj@@rkqewf5)=t@4oxq#w0q)*7j_oq%6=
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ["localhost", "18.221.71.148"]
+ALLOWED_HOSTS = ["localhost", "18.221.71.148",
+                 "ec2-18-221-71-148.us-east-2.compute.amazonaws.com",]
 
 
 # Application definition
@@ -55,7 +56,7 @@ ROOT_URLCONF = 'overseenbudget.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / 'templates'], 
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -122,3 +123,6 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+LOGIN_REDIRECT_URL = 'account'
+LOGOUT_REDIRECT_URL = 'login'
