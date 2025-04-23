@@ -16,16 +16,37 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
-from home.views import search_page, account_page, expense_page, AccountPageView
+from home.views import search_page, account_page, expense_page, register, CustomLogoutView, custom_login
+from home import views as home_views
 from django.contrib.auth import views as auth_views
+from django.views.decorators.csrf import ensure_csrf_cookie
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import redirect
+
+# Redirect root to login if not authenticated
+def redirect_to_login(request):
+    if request.user.is_authenticated:
+        return redirect('account')
+    return custom_login(request)
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', auth_views.LoginView.as_view(template_name='login.html'), name='home'),  
-    path('search/', search_page, name='search'),
-    path('account/', AccountPageView.as_view(), name='account'),
-    path('expense/', expense_page, name='expense'),
-    path('login/', auth_views.LoginView.as_view(template_name='login.html'), name='login'),
-    path('logout/', auth_views.LogoutView.as_view(), name='logout'),
+    path('', redirect_to_login, name='home'),  # Root URL redirects to login or account
+    path('search/', login_required(search_page, login_url='/'), name='search'),
+    path('search_transactions/', login_required(home_views.search_transactions, login_url='/'), name='search_transactions'),
+    path('account/', login_required(account_page, login_url='/'), name='account'),
+    path('calendar_transactions/', login_required(home_views.get_calendar_transactions, login_url='/'), name='calendar_transactions'),
+    path('expense/', login_required(expense_page, login_url='/'), name='expense'),
+    path('login/', custom_login, name='login'),
+    path('logout/', CustomLogoutView.as_view(), name='logout'),
+    path('register/', register, name='register'),
+    path('plaid/create-link-token/', login_required(home_views.create_link_token, login_url='/'), name='create_link_token'),
+    path('plaid/exchange-public-token/', login_required(home_views.exchange_public_token, login_url='/'), name='exchange_public_token'),
+    path('plaid/sync-transactions/', login_required(home_views.sync_transactions, login_url='/'), name='sync_transactions'),
+    path('plaid/test-link-token/', login_required(home_views.test_link_token, login_url='/'), name='test_link_token'),
+    path('plaid/debug/', login_required(home_views.debug_plaid, login_url='/'), name='debug_plaid'),
+    path('plaid/get-transactions/', login_required(home_views.get_transactions, login_url='/'), name='get_transactions'),
+    path('plaid/get-accounts/', login_required(home_views.get_accounts, login_url='/'), name='get_accounts'),
+    path('unlink_account/', login_required(home_views.unlink_account), name='unlink_account'),
 ]
 
