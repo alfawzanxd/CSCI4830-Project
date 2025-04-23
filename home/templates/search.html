@@ -1,9 +1,173 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Search</title>
-</head>
-<body>
-    <h1>Search Page</h1>
-</body>
-</html>
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Search Transactions</h2>
+    
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="input-group">
+                <input type="text" id="dateSearch" class="form-control" placeholder="Enter date (YYYY-MM-DD)" 
+                       pattern="\d{4}-\d{2}-\d{2}" title="Please use YYYY-MM-DD format">
+                <button class="btn btn-primary" onclick="searchTransactions()">Search</button>
+            </div>
+            <div id="dateError" class="text-danger mt-2" style="display: none;"></div>
+        </div>
+    </div>
+
+    <div id="searchResults">
+        <div id="noResults" style="display: none;">
+            <p>No transactions found for the selected date.</p>
+        </div>
+        <div id="resultsTable" style="display: none;">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Merchant</th>
+                        <th>Amount</th>
+                        <th>Transaction Type</th>
+                        <th>Category</th>
+                        <th>Account</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsBody">
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+function searchTransactions() {
+    const dateInput = document.getElementById('dateSearch');
+    const dateError = document.getElementById('dateError');
+    const resultsTable = document.getElementById('resultsTable');
+    const noResults = document.getElementById('noResults');
+    const resultsBody = document.getElementById('resultsBody');
+    
+    // Clear previous results and errors
+    dateError.style.display = 'none';
+    resultsTable.style.display = 'none';
+    noResults.style.display = 'none';
+    resultsBody.innerHTML = '';
+    
+    // Validate date format
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(dateInput.value)) {
+        dateError.textContent = 'Please enter a date in YYYY-MM-DD format';
+        dateError.style.display = 'block';
+        return;
+    }
+    
+    // Show loading state
+    dateError.textContent = 'Searching...';
+    dateError.style.display = 'block';
+    dateError.classList.remove('text-danger');
+    dateError.classList.add('text-info');
+    
+    // Make API call to search transactions
+    fetch(`{% url 'search_transactions' %}?date=${dateInput.value}`, {
+        method: 'GET',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'Content-Type': 'application/json',
+        },
+        credentials: 'same-origin'
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        // Hide loading state
+        dateError.style.display = 'none';
+        
+        if (data.error) {
+            dateError.textContent = data.error;
+            dateError.style.display = 'block';
+            dateError.classList.remove('text-info');
+            dateError.classList.add('text-danger');
+            return;
+        }
+        
+        if (!data.transactions || data.transactions.length === 0) {
+            noResults.style.display = 'block';
+            return;
+        }
+        
+        // Display results
+        data.transactions.forEach(transaction => {
+            const row = document.createElement('tr');
+            
+            // Determine if it's a credit (money in) or debit (money out)
+            let isCredit = false;
+            const category = transaction.category || '';
+            const merchantName = transaction.merchant_name || '';
+            const amount = parseFloat(transaction.amount);
+            
+            // First check for income categories (Transfers, Deposits, Payroll)
+            if (category.includes('Transfer') || 
+                category.includes('Deposit') || 
+                category.includes('Payroll') ||
+                merchantName.toLowerCase().includes('payroll') ||
+                merchantName.toLowerCase().includes('direct deposit')) {
+                // For these categories, positive amount = money in (credit)
+                isCredit = amount > 0;
+            }
+            // Then check for expense categories (Travel, Transportation)
+            else if (category.includes('Travel') || 
+                     category.includes('Transportation') ||
+                     merchantName.toLowerCase().includes('airline') ||
+                     merchantName.toLowerCase().includes('hotel') ||
+                     merchantName.toLowerCase().includes('uber') ||
+                     merchantName.toLowerCase().includes('lyft')) {
+                // Travel services are always expenses (money out)
+                isCredit = false;
+            }
+            // For all other transactions
+            else {
+                // For regular transactions, positive amount means expense (money out)
+                isCredit = amount < 0;
+            }
+            
+            // Calculate the display amount
+            // For credits (money in): use positive amount
+            // For debits (money out): use negative amount
+            const displayAmount = isCredit ? Math.abs(amount) : -Math.abs(amount);
+            const sign = isCredit ? '+' : '-';
+            const amountClass = isCredit ? 'text-success' : 'text-danger';
+            const transactionType = isCredit ? 'Money In' : 'Money Out';
+            
+            row.innerHTML = `
+                <td>${transaction.date}</td>
+                <td>${transaction.merchant_name || 'Unknown'}</td>
+                <td class="${amountClass}">${sign}$${Math.abs(amount).toFixed(2)}</td>
+                <td>${transactionType}</td>
+                <td>${transaction.category || 'Uncategorized'}</td>
+                <td>${transaction.account_name || 'Unknown Account'}</td>
+            `;
+            resultsBody.appendChild(row);
+        });
+        
+        resultsTable.style.display = 'block';
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        dateError.textContent = 'An error occurred while searching transactions. Please try again.';
+        dateError.style.display = 'block';
+        dateError.classList.remove('text-info');
+        dateError.classList.add('text-danger');
+    });
+}
+
+// Add event listener for Enter key
+document.getElementById('dateSearch').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        searchTransactions();
+    }
+});
+</script>
+{% endblock %}

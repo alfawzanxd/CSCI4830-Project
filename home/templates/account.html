@@ -1,91 +1,645 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Account Page</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f4f4f4;
-            margin: 0;
-            padding: 2em;
-        }
+{% extends 'base.html' %}
+{% load static %}
 
-        .container {
-            max-width: 400px;
-        }
-
-        .profile {
-            display: flex;
-            align-items: center;
-            margin-bottom: 2em;
-        }
-
-        .profile img {
-            width: 80px;
-            height: 80px;
-            border-radius: 50%;
-            margin-right: 1.5em;
-        }
-
-        .username {
-            font-size: 1.8em;
-            font-weight: bold;
-        }
-
-        .buttons {
-            display: flex;
-            flex-direction: column;
-            gap: 1em;
-            margin-bottom: 2em;
-        }
-
-        .buttons a {
-            padding: 1em;
-            background-color: #005ecb;
-            color: white;
-            text-decoration: none;
-            font-size: 1.2em;
-            border-radius: 6px;
-        }
-
-        .buttons a:hover {
-            background-color: #004aa1;
-        }
-
-        .buttons form button {
-            padding: 1em;
-            background-color: #005ecb;
-            color: white;
-            font-size: 1.2em;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-        }
-
-.buttons form button:hover {
-    background-color: #004aa1;
-}
-
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="profile">
-            <img src="https://www.w3schools.com/howto/img_avatar.png" alt="Profile Picture">
-            <div class="username">Welcome, test_user</div>
+{% block content %}
+<div class="container mt-4">
+    <h2>Your Accounts</h2>
+    
+    {% if has_linked_accounts %}
+        <div class="institutions-list">
+            {% for institution in institutions %}
+            <div class="institution-card">
+                <div class="institution-header">
+                    <h3>{{ institution.name }}</h3>
+                    <button class="unlink-btn" onclick="unlinkAccount('{{ institution.item_id }}')">Unlink Bank Account</button>
+                </div>
+                <div class="accounts-list">
+                    {% for account in institution.accounts %}
+                    <div class="account-card">
+                        <div class="account-info">
+                            <h4>{{ account.name }}</h4>
+                            <p class="account-type">{{ account.type }}{% if account.subtype %} ({{ account.subtype }}){% endif %}</p>
+                            <p class="account-mask">****{{ account.mask }}</p>
+                            <p class="balance">Balance: ${{ account.balance|floatformat:2 }}</p>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
         </div>
 
-        <div class="buttons">
-            <a href="{% url 'expense' %}">View Expenses</a>
-            <a href="{% url 'expense' %}">View Budgets</a>
-            <form action="{% url 'logout' %}" method="post">
-                {% csrf_token %}
-                <button type="submit">Logout</button>
-            </form>
+        <h3 class="mt-4">Transaction Calendar</h3>
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <div class="input-group">
+                    <button id="prevMonth" class="btn btn-outline-secondary">&lt; Previous</button>
+                    <input type="month" id="monthPicker" class="form-control text-center" value="{{ current_date|date:'Y-m' }}">
+                    <button id="nextMonth" class="btn btn-outline-secondary">Next &gt;</button>
+                </div>
+            </div>
         </div>
+        
+        <div class="calendar-container">
+            <div class="calendar-header">
+                <div>Sun</div>
+                <div>Mon</div>
+                <div>Tue</div>
+                <div>Wed</div>
+                <div>Thu</div>
+                <div>Fri</div>
+                <div>Sat</div>
+            </div>
+            <div id="calendarBody" class="calendar-body">
+                <!-- Calendar days will be populated by JavaScript -->
+            </div>
+        </div>
+        
+        <div id="transactionModal" class="modal fade" tabindex="-1" role="dialog">
+            <div class="modal-dialog" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Transactions for <span id="modalDate"></span></h5>
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="modalTransactions">
+                            <!-- Transactions will be populated by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <div class="alert alert-info">
+            You haven't linked any bank accounts yet. Click the button below to get started.
+        </div>
+    {% endif %}
+
+    <div class="mt-4">
+        <button id="link-button" class="btn btn-primary">Link Bank Account</button>
     </div>
-</body>
-</html>
+</div>
+
+<style>
+    .calendar-container {
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        overflow: hidden;
+    }
+    
+    .calendar-header {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        background-color: #f8f9fa;
+        border-bottom: 1px solid #ddd;
+    }
+    
+    .calendar-header div {
+        padding: 10px;
+        text-align: center;
+        font-weight: bold;
+    }
+    
+    .calendar-body {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+    }
+    
+    .calendar-day {
+        min-height: 100px;
+        padding: 5px;
+        border-right: 1px solid #ddd;
+        border-bottom: 1px solid #ddd;
+        cursor: pointer;
+    }
+    
+    .calendar-day:nth-child(7n) {
+        border-right: none;
+    }
+    
+    .calendar-day.other-month {
+        background-color: #f8f9fa;
+        color: #999;
+    }
+    
+    .calendar-day.today {
+        background-color: #e9f7fe;
+    }
+    
+    .calendar-day.has-transactions {
+        background-color: #f8f9fa;
+    }
+    
+    .day-number {
+        font-weight: bold;
+        margin-bottom: 5px;
+    }
+    
+    .transaction-indicator {
+        font-size: 0.9em;
+        font-weight: bold;
+        text-align: center;
+        padding: 2px 4px;
+        border-radius: 3px;
+    }
+    
+    .transaction-credit {
+        color: #28a745;
+    }
+    
+    .transaction-debit {
+        color: #dc3545;
+    }
+    
+    .transaction-item {
+        margin-bottom: 10px;
+        padding: 5px;
+        border-radius: 3px;
+        background-color: #f8f9fa;
+    }
+
+    .institutions-list {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    .institution-card {
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 20px;
+        background-color: white;
+    }
+
+    .institution-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #eee;
+    }
+
+    .institution-header h3 {
+        margin: 0;
+        color: #333;
+    }
+
+    .accounts-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 15px;
+    }
+
+    .account-card {
+        border: 1px solid #eee;
+        border-radius: 6px;
+        padding: 15px;
+        background-color: #f8f9fa;
+    }
+
+    .account-info h4 {
+        margin: 0 0 10px 0;
+        color: #444;
+    }
+
+    .account-type {
+        color: #666;
+        font-size: 0.9em;
+        margin: 5px 0;
+    }
+
+    .account-mask {
+        color: #888;
+        font-size: 0.9em;
+        margin: 5px 0;
+    }
+
+    .balance {
+        font-weight: bold;
+        color: #28a745;
+        margin: 5px 0;
+    }
+
+    .unlink-btn {
+        background-color: #dc3545;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+
+    .unlink-btn:hover {
+        background-color: #c82333;
+    }
+</style>
+
+<script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('Window loaded');
+        
+        // Calendar functionality
+        let currentDate = new Date();
+        let transactionsByDate = {};
+        
+        // Initialize the calendar
+        function initCalendar() {
+            const monthPicker = document.getElementById('monthPicker');
+            if (monthPicker) {
+                monthPicker.value = currentDate.toISOString().slice(0, 7);
+                loadTransactions();
+                
+                // Add event listeners for month navigation
+                document.getElementById('prevMonth').addEventListener('click', function() {
+                    currentDate.setMonth(currentDate.getMonth() - 1);
+                    monthPicker.value = currentDate.toISOString().slice(0, 7);
+                    loadTransactions();
+                });
+                
+                document.getElementById('nextMonth').addEventListener('click', function() {
+                    currentDate.setMonth(currentDate.getMonth() + 1);
+                    monthPicker.value = currentDate.toISOString().slice(0, 7);
+                    loadTransactions();
+                });
+                
+                monthPicker.addEventListener('change', function() {
+                    const [year, month] = this.value.split('-');
+                    currentDate = new Date(year, month - 1, 1);
+                    loadTransactions();
+                });
+            }
+        }
+        
+        // Load transactions for the current month
+        function loadTransactions() {
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth() + 1;
+            
+            // Show loading indicator
+            const calendarBody = document.getElementById('calendarBody');
+            if (calendarBody) {
+                calendarBody.innerHTML = '<div class="text-center p-5">Loading transactions...</div>';
+            }
+            
+            fetch(`/calendar_transactions/?year=${year}&month=${month}`, {
+                method: 'GET',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken'),
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'same-origin'
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.error) {
+                    console.error('Error loading transactions:', data.error);
+                    if (calendarBody) {
+                        calendarBody.innerHTML = `<div class="text-center p-5 text-danger">Error: ${data.error}</div>`;
+                    }
+                    return;
+                }
+                
+                // Log the transactions data for debugging
+                console.log('Received transactions data:', data.transactions);
+                
+                transactionsByDate = data.transactions;
+                renderCalendar();
+            })
+            .catch(error => {
+                console.error('Error loading transactions:', error);
+                if (calendarBody) {
+                    calendarBody.innerHTML = `<div class="text-center p-5 text-danger">Error loading transactions: ${error.message}</div>`;
+                }
+            });
+        }
+        
+        // Render the calendar
+        function renderCalendar() {
+            const calendarBody = document.getElementById('calendarBody');
+            if (!calendarBody) return;
+            
+            // Clear the calendar
+            calendarBody.innerHTML = '';
+            
+            // Get the first day of the month
+            const firstDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+            
+            // Get the last day of the month
+            const lastDay = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+            
+            // Get the day of the week for the first day (0 = Sunday, 1 = Monday, etc.)
+            const firstDayOfWeek = firstDay.getDay();
+            
+            // Get the number of days in the previous month
+            const prevMonthLastDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), 0).getDate();
+            
+            // Debug: Log the date keys in transactionsByDate
+            console.log('Date keys in transactionsByDate:', Object.keys(transactionsByDate));
+            
+            // Create a document fragment for better performance
+            const fragment = document.createDocumentFragment();
+            
+            // Add days from the previous month
+            for (let i = firstDayOfWeek - 1; i >= 0; i--) {
+                const day = prevMonthLastDay - i;
+                const date = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, day);
+                const dateStr = formatDateForAPI(date);
+                
+                const dayElement = document.createElement('div');
+                dayElement.className = 'calendar-day other-month';
+                dayElement.innerHTML = `
+                    <div class="day-number">${day}</div>
+                `;
+                
+                fragment.appendChild(dayElement);
+            }
+            
+            // Add days from the current month
+            for (let day = 1; day <= lastDay.getDate(); day++) {
+                const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
+                const dateStr = formatDateForAPI(date);
+                
+                // Debug: Check if this date has transactions
+                if (transactionsByDate[dateStr]) {
+                    console.log(`Date ${dateStr} has ${transactionsByDate[dateStr].length} transactions`);
+                    if (transactionsByDate[dateStr].length > 0) {
+                        console.log(`First transaction:`, transactionsByDate[dateStr][0]);
+                    }
+                }
+                
+                const dayElement = document.createElement('div');
+                dayElement.className = 'calendar-day';
+                
+                // Check if it's today
+                const today = new Date();
+                if (date.getDate() === today.getDate() && 
+                    date.getMonth() === today.getMonth() && 
+                    date.getFullYear() === today.getFullYear()) {
+                    dayElement.classList.add('today');
+                }
+                
+                // Check if there are transactions for this day
+                if (transactionsByDate[dateStr] && transactionsByDate[dateStr].length > 0) {
+                    dayElement.classList.add('has-transactions');
+                    
+                    // Calculate the total amount for the day
+                    let totalAmount = 0;
+                    transactionsByDate[dateStr].forEach(transaction => {
+                        // Use the signed_amount for correct credit/debit calculation
+                        totalAmount += parseFloat(transaction.signed_amount);
+                    });
+                    
+                    // Format the amount with appropriate sign and color
+                    const isCredit = totalAmount > 0;
+                    const sign = isCredit ? '+' : '-';
+                    const amountClass = isCredit ? 'transaction-credit' : 'transaction-debit';
+                    const formattedAmount = `${sign}$${Math.abs(totalAmount).toFixed(2)}`;
+                    
+                    dayElement.innerHTML = `
+                        <div class="day-number">${day}</div>
+                        <div class="transaction-indicator ${amountClass}">${formattedAmount}</div>
+                    `;
+                } else {
+                    dayElement.innerHTML = `
+                        <div class="day-number">${day}</div>
+                    `;
+                }
+                
+                fragment.appendChild(dayElement);
+            }
+            
+            // Add days from the next month
+            const totalDays = firstDayOfWeek + lastDay.getDate();
+            const remainingDays = 42 - totalDays; // 6 rows of 7 days = 42
+            
+            for (let day = 1; day <= remainingDays; day++) {
+                const dayElement = document.createElement('div');
+                dayElement.className = 'calendar-day other-month';
+                dayElement.innerHTML = `
+                    <div class="day-number">${day}</div>
+                `;
+                
+                fragment.appendChild(dayElement);
+            }
+            
+            // Append the fragment to the calendar body
+            calendarBody.appendChild(fragment);
+        }
+        
+        // Helper function to format date as YYYY-MM-DD
+        function formatDateForAPI(date) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+        
+        // Show transactions in a modal
+        function showTransactions(dateStr, transactions) {
+            const modal = document.getElementById('transactionModal');
+            const modalDate = document.getElementById('modalDate');
+            const modalTransactions = document.getElementById('modalTransactions');
+            
+            // Format the date
+            const date = new Date(dateStr);
+            modalDate.textContent = date.toLocaleDateString('en-US', { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            });
+            
+            // Clear previous transactions
+            modalTransactions.innerHTML = '';
+            
+            // Add transactions to the modal
+            transactions.forEach(transaction => {
+                const transactionElement = document.createElement('div');
+                transactionElement.className = 'transaction-item';
+                
+                const sign = transaction.type === 'credit' ? '+' : '-';
+                const amountClass = transaction.type === 'credit' ? 'transaction-credit' : 'transaction-debit';
+                
+                // Check if this is a summary entry
+                if (transaction.merchant_name === 'Daily Summary') {
+                    transactionElement.innerHTML = `
+                        <div><strong>Daily Summary</strong></div>
+                        <div class="${amountClass}">${sign}$${parseFloat(transaction.amount).toFixed(2)}</div>
+                        <div><small>${transaction.transaction_count || 0} transaction(s)</small></div>
+                    `;
+                } else {
+                    transactionElement.innerHTML = `
+                        <div><strong>${transaction.merchant_name || 'Unknown'}</strong></div>
+                        <div class="${amountClass}">${sign}$${parseFloat(transaction.amount).toFixed(2)}</div>
+                        <div><small>${transaction.category || 'Uncategorized'}</small></div>
+                        <div><small>${transaction.account_type || 'Unknown account type'}</small></div>
+                    `;
+                }
+                
+                modalTransactions.appendChild(transactionElement);
+            });
+            
+            // Show the modal
+            $(modal).modal('show');
+        }
+        
+        // Check if Plaid object is available
+        if (typeof Plaid !== 'undefined') {
+            console.log('Plaid object is available after page load');
+        } else {
+            console.error('Plaid object is not available');
+        }
+
+        // Get CSRF token from cookie
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+        
+        const csrftoken = getCookie('csrftoken');
+        console.log('CSRF token:', csrftoken);
+
+        const linkButton = document.getElementById('link-button');
+        
+        linkButton.addEventListener('click', async function() {
+            console.log('Link button clicked');
+            try {
+                const response = await fetch('/plaid/create-link-token/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrftoken
+                    },
+                });
+                
+                console.log('Create link token response status:', response.status);
+                const data = await response.json();
+                console.log('Link token response:', data);
+                
+                if (response.ok && data.link_token) {
+                    console.log('Opening Plaid Link with token:', data.link_token);
+                    const handler = Plaid.create({
+                        token: data.link_token,
+                        onSuccess: async (public_token, metadata) => {
+                            console.log('Success! Public token:', public_token);
+                            console.log('Metadata:', metadata);
+                            
+                            try {
+                                const exchangeResponse = await fetch('/plaid/exchange-public-token/', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'X-CSRFToken': csrftoken
+                                    },
+                                    body: JSON.stringify({
+                                        public_token: public_token,
+                                        metadata: metadata
+                                    }),
+                                });
+                                
+                                const exchangeData = await exchangeResponse.json();
+                                console.log('Exchange response:', exchangeData);
+                                
+                                if (exchangeResponse.ok) {
+                                    console.log('Successfully exchanged public token');
+                                    alert('Successfully linked account!');
+                                    window.location.reload();
+                                } else {
+                                    console.error('Error exchanging public token:', exchangeData);
+                                    alert('Error linking account: ' + (exchangeData.error || 'Unknown error'));
+                                }
+                            } catch (error) {
+                                console.error('Error exchanging public token:', error);
+                                alert('Error linking account: ' + error.message);
+                            }
+                        },
+                        onExit: (err, metadata) => {
+                            if (err) {
+                                console.error('Plaid Link error:', err);
+                                alert('Error with Plaid Link: ' + err.display_message);
+                            }
+                            console.log('Plaid Link metadata:', metadata);
+                        },
+                        onLoad: () => {
+                            console.log('Plaid Link loaded');
+                        },
+                        onEvent: (eventName, metadata) => {
+                            console.log('Plaid Link event:', eventName, metadata);
+                        },
+                        onReady: () => {
+                            console.log('Plaid Link ready');
+                        },
+                    });
+                    handler.open();
+                } else {
+                    console.error('Error creating link token:', data);
+                    alert('Error creating link token: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error creating link token:', error);
+                alert('Error creating link token: ' + error.message);
+            }
+        });
+        
+        // Initialize the calendar if the user has linked accounts
+        if (document.getElementById('monthPicker')) {
+            initCalendar();
+        }
+    });
+
+    async function unlinkAccount(itemId) {
+        if (!confirm('Are you sure you want to unlink this bank account? This will remove all associated accounts and transactions.')) {
+            return;
+        }
+        
+        try {
+            console.log('Unlinking bank account with item_id:', itemId);
+            const response = await fetch('/unlink_account/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    item_id: itemId
+                })
+            });
+            
+            if (!response.ok) {
+                const data = await response.json();
+                throw new Error(data.error || 'Failed to unlink bank account');
+            }
+            
+            const data = await response.json();
+            console.log('Bank account unlinked successfully:', data);
+            alert('Bank account unlinked successfully');
+            location.reload();
+        } catch (error) {
+            console.error('Error unlinking bank account:', error);
+            alert('Error unlinking bank account: ' + error.message);
+        }
+    }
+</script>
+{% endblock %}
 
 
 

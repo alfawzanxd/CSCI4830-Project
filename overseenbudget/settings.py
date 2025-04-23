@@ -25,8 +25,8 @@ SECRET_KEY = 'django-insecure-+w@q#(!q#nye4en$5tj@@rkqewf5)=t@4oxq#w0q)*7j_oq%6=
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ["localhost", "18.221.71.148",
-                 "ec2-18-221-71-148.us-east-2.compute.amazonaws.com",]
+ALLOWED_HOSTS = ["overseenbudget.com", "www.overseenbudget.com", "localhost",
+                 "ec2-18-220-40-225.us-east-2.compute.amazonaws.com", "127.0.0.1"]
 
 
 # Application definition
@@ -45,7 +45,7 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
+    # 'django.middleware.csrf.CsrfViewMiddleware',  # Temporarily disabled
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -126,3 +126,18 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 LOGIN_REDIRECT_URL = 'account'
 LOGOUT_REDIRECT_URL = 'login'
+
+# Plaid settings
+PLAID_CLIENT_ID = '68041f3f6163b20022224515'
+PLAID_SECRET = 'd74596a0e4a7e2bfe2a7a13ba54464'
+PLAID_ENV = 'sandbox'  # Change to 'development' or 'production' when ready
+
+# CSRF settings
+CSRF_COOKIE_SECURE = False
+CSRF_COOKIE_HTTPONLY = False
+CSRF_COOKIE_SAMESITE = None
+CSRF_TRUSTED_ORIGINS = ['http://127.0.0.1:8001', 'http://localhost:8001']
+CSRF_USE_SESSIONS = False
+CSRF_COOKIE_NAME = 'csrftoken'
+CSRF_COOKIE_AGE = 31449600  # 1 year in seconds
+CSRF_COOKIE_DOMAIN = None

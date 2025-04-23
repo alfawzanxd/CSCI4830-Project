@@ -1,90 +1,386 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Expense Tracking Page</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f4f4f4;
-            margin: 0;
-            padding: 2em;
-        }
+{% extends 'base.html' %}
+{% load static %}
 
-        .container {
-            max-width: 400px;
-        }
-
-        .profile {
-            display: flex;
-            align-items: center;
-            margin-bottom: 2em;
-        }
-
-        .profile img {
-            width: 80px;
-            height: 80px;
-            border-radius: 50%;
-            margin-right: 1.5em;
-        }
-
-        .username {
-            font-size: 1.8em;
-            font-weight: bold;
-        }
-
-        .buttons {
-            display: flex;
-            flex-direction: column;
-            gap: 1em;
-            margin-bottom: 2em;
-        }
-
-        .buttons a {
-            padding: 1em;
-            background-color: #005ecb;
-            color: white;
-            text-decoration: none;
-            font-size: 1.2em;
-            border-radius: 6px;
-        }
-
-        .buttons a:hover {
-            background-color: #004aa1;
-        }
-
-        .home-button {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 32px;
-            height: 32px;
-            background-color: #005ecb;
-            color: white;
-            text-decoration: none;
-            font-size: 1.2em;
-            border-radius: 4px;
-        }
-
-        .home-button:hover {
-            background-color: #004aa1;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="profile">
-            <img src="profile-pic.jpg" alt="Profile Picture">
-            <div class="username">Your Name</div>
+{% block content %}
+<div class="container mt-4">
+    <h2>Expense Tracking</h2>
+    
+    <!-- Bank Account Buttons -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title">Your Bank Accounts</h5>
+            <div id="bank-accounts-container" class="d-flex flex-wrap gap-2">
+                <!-- Bank account buttons will be added here dynamically -->
+                <div class="text-center w-100 py-3">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading accounts...</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- All Accounts Button -->
+            <div class="mt-3">
+                <button type="button" class="btn btn-primary" onclick="loadAllTransactions()">All Accounts</button>
+            </div>
         </div>
-
-        <div class="buttons">
-            <a href="#">Add Expense</a>
-            <a href="#">View Expenses</a>
-            <a href="#">Monthly Summary</a>
-        </div>
-
-	<a href="{% url 'account' %}" class="home-button" title="Back to Account">&#8592;</a>
     </div>
-</body>
-</html>
+    
+    <!-- Account Filters -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title">Filter Transactions</h5>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="institutionSelect" class="form-label">Institution</label>
+                    <select id="institutionSelect" class="form-select" onchange="updateAccountDropdown()">
+                        <option value="">All Institutions</option>
+                    </select>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="accountSelect" class="form-label">Account</label>
+                    <select id="accountSelect" class="form-select" onchange="applyFilters()">
+                        <option value="">All Accounts</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Transactions Table -->
+    <div id="transactions-container" style="display: none;">
+        <h3>Transactions</h3>
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Description</th>
+                        <th>Amount</th>
+                        <th>Category</th>
+                        <th>Account</th>
+                        <th>Institution</th>
+                    </tr>
+                </thead>
+                <tbody id="transactions-body">
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div id="loading-spinner" class="text-center" style="display: none;">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+</div>
+
+<style>
+    .bank-account-btn {
+        min-width: 150px;
+        margin: 5px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    .gap-2 {
+        gap: 0.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Global variables
+let accountsData = [];
+const accountsWithTransactions = new Set();
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Show loading state
+    const container = document.getElementById('bank-accounts-container');
+    container.innerHTML = '<div class="text-center w-100"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><div class="mt-2">Loading accounts...</div></div>';
+    
+    // Load accounts data
+    fetch('/plaid/get-accounts/')
+        .then(response => response.json())
+        .then(data => {
+            accountsData = data.accounts;
+            console.log('Received accounts data:', accountsData);
+            console.log(`Total accounts received: ${accountsData.length}`);
+            
+            // Create account buttons immediately using has_transactions flag
+            populateDropdowns();
+            createBankAccountButtons();
+        })
+        .catch(error => {
+            console.error('Error loading accounts:', error);
+            container.innerHTML = '<div class="text-center w-100">Error loading accounts. Please try again.</div>';
+        });
+});
+
+// Create buttons for each bank account
+function createBankAccountButtons() {
+    const container = document.getElementById('bank-accounts-container');
+    container.innerHTML = ''; // Clear the loading spinner
+    
+    if (accountsData.length === 0) {
+        container.innerHTML = '<div class="text-center w-100">No bank accounts found. Please link a bank account first.</div>';
+        return;
+    }
+    
+    // Group accounts by institution
+    const accountsByInstitution = {};
+    accountsData.forEach(account => {
+        const institution = account.institution || 'Unknown Institution';
+        if (!accountsByInstitution[institution]) {
+            accountsByInstitution[institution] = [];
+        }
+        accountsByInstitution[institution].push(account);
+    });
+    
+    // Create buttons for each institution and account
+    Object.keys(accountsByInstitution).forEach(institution => {
+        // Filter accounts to only those with transactions
+        const accountsWithData = accountsByInstitution[institution].filter(
+            account => account.has_transactions
+        );
+        
+        // Skip this institution if it has no accounts with transactions
+        if (accountsWithData.length === 0) {
+            return;
+        }
+        
+        // Create institution header
+        const institutionHeader = document.createElement('div');
+        institutionHeader.className = 'w-100 mt-3 mb-2';
+        institutionHeader.innerHTML = `<h6 class="text-muted">${institution}</h6>`;
+        container.appendChild(institutionHeader);
+        
+        // Create account buttons for this institution
+        const accountsDiv = document.createElement('div');
+        accountsDiv.className = 'd-flex flex-wrap gap-2';
+        
+        accountsWithData.forEach(account => {
+            const button = document.createElement('button');
+            button.className = 'btn btn-outline-primary m-1';
+            button.textContent = account.name;
+            button.setAttribute('data-account-id', account.account_id);
+            button.setAttribute('data-institution', account.institution);
+            button.setAttribute('data-account-type', account.type);
+            button.onclick = () => {
+                // Reset other buttons
+                document.querySelectorAll('.btn-outline-primary').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                button.classList.add('active');
+                
+                // Reset dropdowns
+                document.getElementById('institutionSelect').value = '';
+                document.getElementById('accountSelect').value = '';
+                
+                // Load transactions for this account
+                loadTransactionsWithFilters(`account_id=${account.account_id}`);
+            };
+            
+            accountsDiv.appendChild(button);
+        });
+        
+        container.appendChild(accountsDiv);
+    });
+    
+    // If no accounts with transactions were found, show a message
+    if (container.children.length === 0) {
+        container.innerHTML = '<div class="text-center w-100">No accounts with transactions found. Please link a bank account and make some transactions first.</div>';
+    }
+}
+
+// Populate the dropdowns with account data
+function populateDropdowns() {
+    const institutionSelect = document.getElementById('institutionSelect');
+    const accountSelect = document.getElementById('accountSelect');
+    
+    // Clear existing options except the first one
+    while (institutionSelect.options.length > 1) {
+        institutionSelect.remove(1);
+    }
+    while (accountSelect.options.length > 1) {
+        accountSelect.remove(1);
+    }
+    
+    // Get unique institutions
+    const institutions = [...new Set(accountsData.map(account => account.institution))];
+    console.log('Unique institutions:', institutions);
+    institutions.forEach(institution => {
+        const option = document.createElement('option');
+        option.value = institution;
+        option.textContent = institution;
+        institutionSelect.appendChild(option);
+    });
+    
+    // Initial population of accounts dropdown
+    updateAccountDropdown();
+}
+
+// Update account dropdown based on selected institution
+function updateAccountDropdown() {
+    const institutionSelect = document.getElementById('institutionSelect');
+    const accountSelect = document.getElementById('accountSelect');
+    const selectedInstitution = institutionSelect.value;
+    
+    // Clear existing options except the first one
+    while (accountSelect.options.length > 1) {
+        accountSelect.remove(1);
+    }
+    
+    // Filter accounts based on selected institution
+    const filteredAccounts = selectedInstitution 
+        ? accountsData.filter(account => account.institution === selectedInstitution)
+        : accountsData;
+    
+    // Create a map to track unique accounts
+    const uniqueAccounts = new Map();
+    
+    // Add accounts, ensuring uniqueness
+    filteredAccounts.forEach(account => {
+        const key = `${account.name}-${account.account_type}-${account.account_subtype}`;
+        if (!uniqueAccounts.has(key)) {
+            uniqueAccounts.set(key, account);
+        }
+    });
+    
+    // Add unique accounts to the dropdown
+    uniqueAccounts.forEach(account => {
+        const option = document.createElement('option');
+        option.value = account.account_id;
+        
+        // If "All Institutions" is selected, show institution name
+        if (!selectedInstitution) {
+            option.textContent = `${account.name} (${account.institution})`;
+        } else {
+            option.textContent = account.name;
+        }
+        
+        accountSelect.appendChild(option);
+    });
+    
+    // Apply filters after updating the dropdown
+    applyFilters();
+}
+
+// Apply all selected filters
+function applyFilters() {
+    const institution = document.getElementById('institutionSelect').value;
+    const accountId = document.getElementById('accountSelect').value;
+    
+    // Build the query string
+    let queryString = '';
+    
+    if (accountId) {
+        queryString = `account_id=${accountId}`;
+    } else if (institution) {
+        queryString = `institution=${encodeURIComponent(institution)}`;
+    } else {
+        // Default to showing all transactions
+        queryString = 'account_type=all';
+    }
+    
+    loadTransactionsWithFilters(queryString);
+}
+
+// Load transactions with the specified filters
+function loadTransactionsWithFilters(queryString) {
+    // Show loading spinner
+    document.getElementById('loading-spinner').style.display = 'block';
+    document.getElementById('transactions-container').style.display = 'none';
+    
+    // Make API call to get transactions
+    fetch(`/plaid/get-transactions/?${queryString}`)
+        .then(response => response.json())
+        .then(data => {
+            // Hide loading spinner
+            document.getElementById('loading-spinner').style.display = 'none';
+            document.getElementById('transactions-container').style.display = 'block';
+            
+            // Clear existing transactions
+            const tbody = document.getElementById('transactions-body');
+            tbody.innerHTML = '';
+            
+            // Add new transactions
+            data.transactions.forEach(transaction => {
+                const row = document.createElement('tr');
+                
+                // Determine if it's a credit (money in) or debit (money out)
+                let isCredit = false;
+                const category = transaction.category || '';
+                const merchantName = transaction.merchant_name || '';
+                const amount = transaction.amount;
+                
+                // First check for income categories (Transfers, Deposits, Payroll)
+                if (category.includes('Transfer') || 
+                    category.includes('Deposit') || 
+                    category.includes('Payroll') ||
+                    merchantName.toLowerCase().includes('payroll') ||
+                    merchantName.toLowerCase().includes('direct deposit')) {
+                    // For these categories, positive amount = money in (credit)
+                    isCredit = amount > 0;
+                }
+                // Then check for expense categories (Travel, Transportation)
+                else if (category.includes('Travel') || 
+                         category.includes('Transportation') ||
+                         merchantName.toLowerCase().includes('airline') ||
+                         merchantName.toLowerCase().includes('hotel') ||
+                         merchantName.toLowerCase().includes('uber') ||
+                         merchantName.toLowerCase().includes('lyft')) {
+                    // Travel services are always expenses (money out)
+                    isCredit = false;
+                }
+                // For all other transactions
+                else {
+                    // For regular transactions, positive amount means expense (money out)
+                    isCredit = amount < 0;
+                }
+                
+                // Calculate the display amount
+                // For credits (money in): use positive amount
+                // For debits (money out): use negative amount
+                const displayAmount = isCredit ? Math.abs(amount) : -Math.abs(amount);
+                const sign = isCredit ? '+' : '-';
+                const amountClass = isCredit ? 'text-success' : 'text-danger';
+                
+                // Store the actual amount (with sign) in a data attribute for the calendar
+                row.innerHTML = `
+                    <td>${transaction.date}</td>
+                    <td>${transaction.merchant_name || 'Unknown'}</td>
+                    <td class="${amountClass}" data-amount="${displayAmount}">${sign}$${Math.abs(amount).toFixed(2)}</td>
+                    <td>${transaction.category || 'Uncategorized'}</td>
+                    <td>${transaction.account_name || 'Unknown'}</td>
+                    <td>${transaction.institution || 'Unknown'}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            document.getElementById('loading-spinner').style.display = 'none';
+            alert('Error loading transactions. Please try again.');
+        });
+}
+
+// Function to load all transactions
+function loadAllTransactions() {
+    // Reset dropdowns
+    document.getElementById('institutionSelect').value = '';
+    document.getElementById('accountSelect').value = '';
+    
+    // Reset bank account buttons
+    document.querySelectorAll('.btn-outline-primary').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    // Load all transactions
+    loadTransactionsWithFilters('');
+}
+</script>
+{% endblock %}
 
