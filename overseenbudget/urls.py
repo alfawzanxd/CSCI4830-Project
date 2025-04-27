@@ -16,7 +16,12 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
-from home.views import search_page, account_page, expense_page, register, CustomLogoutView, custom_login
+from home.views import (
+    search_page, account_page, expense_page, register, CustomLogoutView, custom_login,
+    create_link_token, exchange_public_token, sync_transactions, get_transactions,
+    search_transactions, get_calendar_transactions, get_accounts, unlink_account,
+    debug_plaid, budget_page, password_reset, password_reset_confirm
+)
 from home import views as home_views
 from django.contrib.auth import views as auth_views
 from django.views.decorators.csrf import ensure_csrf_cookie
@@ -37,6 +42,7 @@ urlpatterns = [
     path('account/', login_required(account_page, login_url='/'), name='account'),
     path('calendar_transactions/', login_required(home_views.get_calendar_transactions, login_url='/'), name='calendar_transactions'),
     path('expense/', login_required(expense_page, login_url='/'), name='expense'),
+    path('budget/', login_required(home_views.budget_page, login_url='/'), name='budget'),
     path('login/', custom_login, name='login'),
     path('logout/', CustomLogoutView.as_view(), name='logout'),
     path('register/', register, name='register'),
@@ -48,5 +54,7 @@ urlpatterns = [
     path('plaid/get-transactions/', login_required(home_views.get_transactions, login_url='/'), name='get_transactions'),
     path('plaid/get-accounts/', login_required(home_views.get_accounts, login_url='/'), name='get_accounts'),
     path('unlink_account/', login_required(home_views.unlink_account), name='unlink_account'),
+    path('password_reset/', password_reset, name='password_reset'),
+    path('password_reset_confirm/<str:uidb64>/<str:token>/', password_reset_confirm, name='password_reset_confirm'),
 ]
 

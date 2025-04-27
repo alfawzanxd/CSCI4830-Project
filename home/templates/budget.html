@@ -1,162 +1,143 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Budgeting Page</title>
+{% extends 'base.html' %}
 
-    <link rel="stylesheet" href="http://pyscript.net/alpha/pyscript.css" />
-    <script defer src="https://pyscript.net/alpha/pyscript.js"></script>
-
-    <style>
-
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f4f4f4;
-            margin: 0;
-            padding: 2em;
-        }
-
-        .container {
-            max-width: 400px;
-        }
-
-        .title {
-            font-size: 2em;
-            align-content:center;
-            margin-bottom: 1em;
-        }
-
-        .profile {
-            display: flex;
-            align-items: center;
-            margin-bottom: 2em;
-        }
-
-            .profile img {
-                width: 80px;
-                height: 80px;
-                border-radius: 50%;
-                margin-right: 1.5em;
-            }
-
-        .username {
-            font-size: 1.8em;
-            font-weight: bold;
-        }
-
-        .buttons {
-            display: flex;
-            flex-direction: column;
-            gap: 1em;
-            margin-bottom: 2em;
-        }
-
-            .buttons a {
-                padding: 1em;
-                background-color: #005ecb;
-                color: white;
-                text-decoration: none;
-                font-size: 1.2em;
-                border-radius: 6px;
-            }
-
-                .buttons a:hover {
-                    background-color: #004aa1;
-                }
-
-        .home-button {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 32px;
-            height: 32px;
-            background-color: #005ecb;
-            color: white;
-            text-decoration: none;
-            font-size: 1.2em;
-            border-radius: 4px;
-        }
-
-            .home-button:hover {
-                background-color: #004aa1;
-            }
-
-        .column {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .row {
-            display: flex;
-            flex-direction: row;
-        }
-
-        .inputs-textbox {
-            padding: 5px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            width: 256px;
-            height: 640;
-            margin-bottom: 16px;
-        }
-
-        .expenses {
-            background-color: #5050DB;
-            padding: 1em;
-            margin-buttom: 0px;
-            width: 256px;
-            height: 50;
-            font-weight: bold;
-            font-size: 1.2em;
-        }
-
-        .expens_info {
-            background-color: #A8A8A8;
-            width:250px;
-            height:30px;
-            margin-bottom: 16px;
-            padding: 2px;
-            padding-left: 1em;
-            padding-top: 10px;
-        }
-
-        .info {
-            font_size: 0.5em;
-            width: 300px;
-            margin-bottom: 1em;
-        }
-
-        .income {
-            margin-left: 50px;
-            background-color: #00FFFF;
-            justify-content: center;
-            border-radius: 6px;
-            height: 40px;
-            width: 80px;
-            padding-left: 5px;
-            font-style:italic;
-        }
-
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="colmn">
-            <div class="title">Budgeting Page</div>
-            <div class="row">
-                <div class="info">Estimated amounts that should be spent on the following:</div>
-                <div class="income">Income: $80610</div>
-            </div>
-            <div class="expenses">Utilities</div>
-            <div class="expens_info">0.09*income</div>
-            <div class="expenses">Food</div>
-            <div class="expens_info">0.125*income</div>
-            <div class="expenses">Entertainment</div>
-            <div class="expens_info">0.075*income</div>
-            <div class="expenses">Other</div>
-            <div class="expens_info">0.71*income</div>
-            <a href="{% url 'home' %}" class="home-button">&#8962;</a>
+{% block content %}
+<div class="container mt-4">
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <h1>Budget Overview</h1>
+        </div>
+        <div class="col-md-6">
+            <form method="get" class="float-end">
+                <div class="input-group">
+                    <select name="account" class="form-select" onchange="this.form.submit()">
+                        <option value="">All Accounts</option>
+                        {% for account in accounts %}
+                            <option value="{{ account.account_id }}" {% if account.account_id == selected_account %}selected{% endif %}>
+                                {{ account.name }} ({{ account.plaid_item.institution_name }})
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </form>
         </div>
     </div>
-</body>
-</html>
+    
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Current Balance</h5>
+                </div>
+                <div class="card-body">
+                    <h3 class="{% if current_balance >= 0 %}text-success{% else %}text-danger{% endif %}">
+                        ${{ current_balance|floatformat:2 }}
+                    </h3>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Total Expenses</h5>
+                </div>
+                <div class="card-body">
+                    <h3 class="text-danger">${{ total_expenses|floatformat:2 }}</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Necessary Expenses</h5>
+                </div>
+                <div class="card-body">
+                    <h3 class="text-primary">${{ necessary_expenses|floatformat:2 }}</h3>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Cut Back Expenses</h5>
+                </div>
+                <div class="card-body">
+                    <h3 class="text-warning">${{ cut_back_expenses|floatformat:2 }}</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Potential Savings Card -->
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Potential Savings</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h4>Current Balance: <span class="{% if current_balance >= 0 %}text-success{% else %}text-danger{% endif %}">${{ current_balance|floatformat:2 }}</span></h4>
+                            <h4>+ Cut Back Expenses: <span class="text-warning">${{ cut_back_expenses|floatformat:2 }}</span></h4>
+                            <hr>
+                            <div class="text-sm text-gray-600">
+                                <p>Potential Balance: <span class="font-semibold {% if potential_balance >= 0 %}text-green-600{% else %}text-red-600{% endif %}">${{ potential_balance|floatformat:2 }}</span></p>
+                                <p>Potential Savings: <span class="font-semibold text-yellow-600">${{ cut_back_expenses|floatformat:2 }}</span></p>
+                                <p>This represents {{ cut_back_percentage|floatformat:1 }}% of your total expenses</p>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="alert alert-info">
+                                <h5 class="alert-heading">Savings Opportunity</h5>
+                                <p>By cutting back on these expenses, you could increase your balance by <strong>${{ cut_back_expenses|floatformat:2 }}</strong>.</p>
+                                <p>This represents <strong>{{ cut_back_percentage|floatformat:1 }}%</strong> of your total expenses.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cut Back Transactions Table -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="card-title mb-0">Individual Cut Back Expenses</h5>
+        </div>
+        <div class="card-body">
+            {% if cut_back_transactions %}
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Merchant</th>
+                                <th>Category</th>
+                                <th>Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for transaction in cut_back_transactions %}
+                                <tr>
+                                    <td>{{ transaction.date|date:"Y-m-d" }}</td>
+                                    <td>{{ transaction.merchant_name }}</td>
+                                    <td>{{ transaction.category }}</td>
+                                    <td class="text-warning">${{ transaction.amount|floatformat:2 }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <p class="text-muted">No cut back expenses found for the selected period.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
 
