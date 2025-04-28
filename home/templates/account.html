@@ -2,32 +2,34 @@
 {% load static %}
 
 {% block content %}
-<div class="container mt-4">
-    <h2>Your Accounts</h2>
-    
-    {% if has_linked_accounts %}
-        <div class="institutions-list">
-            {% for institution in institutions %}
-            <div class="institution-card">
-                <div class="institution-header">
-                    <h3>{{ institution.name }}</h3>
-                    <button class="unlink-btn" onclick="unlinkAccount('{{ institution.item_id }}')">Unlink Bank Account</button>
-                </div>
-                <div class="accounts-list">
-                    {% for account in institution.accounts %}
-                    <div class="account-card">
-                        <div class="account-info">
-                            <h4>{{ account.name }}</h4>
-                            <p class="account-type">{{ account.type }}{% if account.subtype %} ({{ account.subtype }}){% endif %}</p>
-                            <p class="account-mask">****{{ account.mask }}</p>
-                            <p class="balance">Balance: ${{ account.balance|floatformat:2 }}</p>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
-            {% endfor %}
-        </div>
+<div class="container">
+	<div class="d-flex justify-content-between align-items-center mb-4">
+    		<h2>Your Accounts</h2>
+    		<button class="btn btn-danger" onclick="deleteAccount()">Delete Account</button>
+	</div>
+	{% if has_linked_accounts %}
+		<div class="institutions-list">
+			{% for institution in institutions %}
+			<div class="institution-card">
+                		<div class="institution-header">
+                    			<h3>{{ institution.name }}</h3>
+                    			<button class="unlink-btn" onclick="unlinkAccount('{{ institution.item_id }}')">Unlink Bank Account</button>
+                		</div>
+                		<div class="accounts-list">
+                    			{% for account in institution.accounts %}
+                    			<div class="account-card">
+                        			<div class="account-info">
+                            				<h4>{{ account.name }}</h4>
+                            				<p class="account-type">{{ account.type }}{% if account.subtype %} ({{ account.subtype }}){% endif %}</p>
+                            				<p class="account-mask">****{{ account.mask }}</p>
+                            				<p class="balance">Balance: ${{ account.balance|floatformat:2 }}</p>
+                        			</div>
+                    			</div>
+                    			{% endfor %}
+                		</div>
+            		</div>
+            		{% endfor %}
+        	</div>
 
         <h3 class="mt-4">Transaction Calendar</h3>
         <div class="row mb-3">
@@ -641,7 +643,32 @@
 </script>
 {% endblock %}
 
-
+{% block extra_js %}
+<script>
+    function deleteAccount() {
+        if (confirm('Are you sure you want to delete your account? This action cannot be undone.')) {
+            fetch('/delete-account/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/json'
+                },
+		credentials: 'same-origin'
+            })
+            .then(response => {
+                if (response.ok) {
+		      	throw new Error('Failed to delete account');
+		}
+		window.location.href = '/login/';
+	    })
+            .catch(error => {
+                console.error('Error:', error);
+                window.location.href = '/login/';
+            });
+        }
+    }
+</script>
+{% endblock %}
 
 
 

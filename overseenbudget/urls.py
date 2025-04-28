@@ -15,7 +15,7 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path
+from django.urls import path, include
 from home.views import (
     search_page, account_page, expense_page, register, CustomLogoutView, custom_login,
     create_link_token, exchange_public_token, sync_transactions, get_transactions,
@@ -24,7 +24,7 @@ from home.views import (
 )
 from home import views as home_views
 from django.contrib.auth import views as auth_views
-from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect
 
@@ -36,7 +36,8 @@ def redirect_to_login(request):
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', redirect_to_login, name='home'),  # Root URL redirects to login or account
+    path('', redirect_to_login, name='home'), # Root URL redirects to login or account
+    path('', include('home.urls')),
     path('search/', login_required(search_page, login_url='/'), name='search'),
     path('search_transactions/', login_required(home_views.search_transactions, login_url='/'), name='search_transactions'),
     path('account/', login_required(account_page, login_url='/'), name='account'),
@@ -48,7 +49,7 @@ urlpatterns = [
     path('register/', register, name='register'),
     path('plaid/create-link-token/', login_required(home_views.create_link_token, login_url='/'), name='create_link_token'),
     path('plaid/exchange-public-token/', login_required(home_views.exchange_public_token, login_url='/'), name='exchange_public_token'),
-    path('plaid/sync-transactions/', login_required(home_views.sync_transactions, login_url='/'), name='sync_transactions'),
+    path('plaid/sync-transactions/', csrf_exempt(login_required(home_views.sync_transactions, login_url='/')), name='sync_transactions'),
     path('plaid/test-link-token/', login_required(home_views.test_link_token, login_url='/'), name='test_link_token'),
     path('plaid/debug/', login_required(home_views.debug_plaid, login_url='/'), name='debug_plaid'),
     path('plaid/get-transactions/', login_required(home_views.get_transactions, login_url='/'), name='get_transactions'),
