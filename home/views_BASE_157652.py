@@ -24,14 +24,6 @@ from django.db import transaction
 from django.utils import timezone
 from plaid.model.item import Item
 import os
-from decimal import Decimal
-from django.contrib.auth.tokens import default_token_generator
-from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
-from django.utils.encoding import force_bytes
-from django.core.mail import send_mail
-from django.contrib import messages
-from .forms import CustomUserCreationForm
-
 
 class AccountPageView(LoginRequiredMixin, View):
     login_url = 'login'  
@@ -210,24 +202,6 @@ def exchange_public_token(request):
             existing_item.institution_name = institution_name
             existing_item.save()
             print(f"Updated existing PlaidItem: {existing_item.id}")
-            accounts_request = plaid.model.accounts_get_request.AccountsGetRequest(
-                access_token=access_token
-            )
-            accounts_response = plaid_client.accounts_get(accounts_request)
-
-            if hasattr(accounts_response, 'accounts'):
-                for account in accounts_response.accounts:
-                    PlaidAccount.objects.update_or_create(
-                        plaid_item=existing_item,
-                        account_id=account.account_id,
-                        defaults={
-                            'name': account.name,
-                            'account_type': account.type,
-                            'account_subtype': account.subtype,
-                            'mask': account.mask,
-                            'balance': account.balances.current
-                        }
-                    )
             return JsonResponse({'status': 'success', 'message': 'Account updated successfully'})
         
         # Create new item
@@ -240,23 +214,6 @@ def exchange_public_token(request):
         )
         
         print(f"Created new PlaidItem: {plaid_item.id}")
-        accounts_request = plaid.model.accounts_get_request.AccountsGetRequest(
-            access_token=access_token
-        )
-        accounts_response = plaid_client.accounts_get(accounts_request)
-
-        if hasattr(accounts_response, 'accounts'):
-            for account in accounts_response.accounts:
-                PlaidAccount.objects.create(
-                    plaid_item=plaid_item,
-                    account_id=account.account_id,
-                    name=account.name,
-                    account_type=account.type,
-                    account_subtype=account.subtype,
-                    mask=account.mask,
-                    balance=account.balances.current
-                )
-
         return JsonResponse({'status': 'success', 'message': 'Account added successfully'})
         
     except plaid.ApiException as e:
@@ -267,20 +224,14 @@ def exchange_public_token(request):
         return JsonResponse({'error': str(e)}, status=500)
 
 @login_required
-@csrf_exempt
 def sync_transactions(request):
-    if request.method != 'POST':
-        return JsonResponse({'error': 'Only POST requests are allowed'}, status=405)
     try:
-        print("Starting transaction sync...")
         plaid_items = PlaidItem.objects.filter(user=request.user)
-        print(f"Found {plaid_items.count()} Plaid items for user {request.user.username}")
         for item in plaid_items:
-            print(f"Processing item: {item.item_id}")
             # Get transactions using the plaid client
             start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
             end_date = datetime.now().strftime('%Y-%m-%d')
-            print(f"Fetching transactions from {start_date} to {end_date}")
+            
             transactions_request = plaid.model.transactions_get_request.TransactionsGetRequest(
                 access_token=item.access_token,
                 start_date=start_date,
@@ -291,7 +242,6 @@ def sync_transactions(request):
             
             if hasattr(response, 'transactions'):
                 transactions = response.transactions
-                print(f"Found {len(transactions)} transactions from Plaid")
                 for transaction in transactions:
                     # Check if transaction already exists
                     existing_transaction = PlaidTransaction.objects.filter(
@@ -305,7 +255,6 @@ def sync_transactions(request):
                         existing_transaction.description = transaction.name
                         existing_transaction.category = ','.join(transaction.category or [])
                         existing_transaction.save()
-                        print(f"Updated transaction: {transaction.transaction_id}")
                     else:
                         # Create new transaction
                         PlaidTransaction.objects.create(
@@ -318,12 +267,11 @@ def sync_transactions(request):
                             description=transaction.name,
                             category=','.join(transaction.category or [])
                         )
-                        print(f"Created new transaction: {transaction.transaction_id}")
         
         # Update daily transaction summaries after syncing transactions
         update_daily_transaction_summaries(request.user)
-        print("Transaction sync completed successfully")
-        return JsonResponse({'status': 'success', 'message': 'Transactions synced successfully'})
+        
+        return JsonResponse({'status': 'success'})
     except plaid.ApiException as e:
         print(f"Plaid API error: {str(e)}")
         return JsonResponse({'error': str(e)}, status=400)
@@ -373,48 +321,16 @@ def update_daily_transaction_summaries(user):
         print(f"Error updating daily transaction summaries: {str(e)}")
         return False
 
-
 def register(request):
     if request.method == 'POST':
-        username = request.POST.get('username')
-        email = request.POST.get('email')
-        password1 = request.POST.get('password1')
-        password2 = request.POST.get('password2')
-        
-        print(f"Registration attempt - Username: {username}, Email: {email}")
-        context = {
-            'username': username,
-            'email': email,
-        }
-
-        if password1 != password2:
-            messages.error(request, "Passwords don't match.")
-            return render(request, 'register.html', context)
-
-        if User.objects.filter(username=username).exists():
-            messages.error(request, "Username already taken.")
-            return render(request, 'register.html', context)
-
-        if User.objects.filter(email=email).exists():
-            messages.error(request, "Email already registered.")
-            return render(request, 'register.html', context)
-
-        # Create user with email
-        user = User.objects.create_user(
-            username=username,
-            email=email,
-            password=password1
-        )
-        
-        user.save()
-        saved_usr = User.objects.get(username=username)
-        print(f"User created - Username: {saved_usr.username}, Email: {saved_usr.email}")
-
-        login(request, user)
-        return redirect('account')
-
-    return render(request, 'register.html')
-
+        form = UserCreationForm(request.POST)
+        if form.is_valid():
+            user = form.save()
+            login(request, user)
+            return redirect('account')
+    else:
+        form = UserCreationForm()
+    return render(request, 'register.html', {'form': form})
 
 class CustomLogoutView(View):
     def get(self, request, *args, **kwargs):
@@ -509,18 +425,12 @@ def custom_login(request):
     if request.method == 'POST':
         username = request.POST.get('username')
         password = request.POST.get('password')
-        
-        if not username or not password:
-            messages.error(request, 'Please enter both username and password.')
-            return render(request, 'login.html')
-            
         user = authenticate(request, username=username, password=password)
         if user is not None:
             login(request, user)
             return redirect('account')
         else:
-            messages.error(request, 'Invalid username or password. Please try again.')
-            return render(request, 'login.html', {'username': username})
+            return render(request, 'login.html', {'error': 'Invalid username or password'})
     else:
         return render(request, 'login.html')
 
@@ -544,6 +454,17 @@ def get_transactions(request):
         # Get transactions for each item
         all_transactions = []
         seen_transactions = set()  # For deduplication
+        
+        # Initialize Plaid client
+        configuration = plaid.Configuration(
+            host='https://sandbox.plaid.com',
+            api_key={
+                'clientId': settings.PLAID_CLIENT_ID,
+                'secret': settings.PLAID_SECRET,
+            }
+        )
+        api_client = plaid.ApiClient(configuration)
+        plaid_client = plaid_api.PlaidApi(api_client)
         
         for item in plaid_items:
             try:
@@ -591,19 +512,6 @@ def get_transactions(request):
                     if institution and institution_name != institution:
                         continue
                     
-                    PlaidTransaction.objects.update_or_create(
-                        plaid_item=item,
-                        transaction_id=transaction.transaction_id,
-                        defaults={
-                            'account_id': transaction.account_id,
-                            'amount': transaction.amount,
-                            'date': transaction.date,
-                            'merchant_name': transaction.merchant_name or transaction.name,
-                            'description': transaction.name,
-                            'category': ','.join(transaction.category or [])
-                        }
-                    )
-
                     transaction_data = {
                         'date': transaction.date,
                         'merchant_name': transaction.merchant_name or transaction.name,
@@ -948,424 +856,3 @@ def unlink_account(request):
         print(f"Unexpected error in unlink_account: {str(e)}")
         return JsonResponse({'error': str(e)}, status=500)
 
-
-@login_required(login_url='login')
-def budget_page(request):
-    try:
-        # Get the selected account from the request
-        selected_account = request.GET.get('account')
-        
-        # Get all Plaid items for the current user
-        plaid_items = PlaidItem.objects.filter(user=request.user)
-        
-        # Get all accounts for the current user
-        accounts = PlaidAccount.objects.filter(plaid_item__in=plaid_items)
-        
-        # Calculate current balance - only for selected account if specified
-        if selected_account:
-            current_balance = Decimal('0')
-            try:
-                selected_account_obj = PlaidAccount.objects.get(account_id=selected_account)
-                current_balance = Decimal(str(selected_account_obj.balance))
-            except PlaidAccount.DoesNotExist:
-                current_balance = Decimal('0')
-        else:
-            # If no account selected, sum all accounts
-            current_balance = sum(Decimal(str(account.balance)) for account in accounts)
-        
-        # Initialize totals
-        total_income = Decimal('0')
-        total_expenses = Decimal('0')
-        cut_back_expenses = Decimal('0')
-        necessary_expenses = Decimal('0')
-        
-        # Define categories for cut-back and necessary expenses
-        cut_back_categories = [
-            'Food and Drink', 'Shopping', 'Shops', 'Entertainment', 'Recreation',
-            'Travel', 'Healthcare', 'Personal Care', 'Miscellaneous', 
-            'Restaurants', 'Fast Food', 'Coffee Shop', 'Bar', 'Clothing', 
-            'Electronics', 'Hobbies', 'Gifts', 'Sports', 'Movies', 'Music', 
-            'Games', 'Dining', 'Food', 'Drink', 'Store', 'Retail', 'Merchandise',
-            'Amusement', 'Leisure', 'Vacation', 'Hotel', 'Air Travel',
-            'Entertainment', 'Recreation', 'Fitness', 'Gym', 'Spa',
-            'Beauty', 'Cosmetics', 'Apparel', 'Accessories',
-            'Gadgets', 'Hobby', 'Craft', 'Gift', 'Present', 'Sport',
-            'Movie', 'Theater', 'Concert', 'Game', 'Video Game'
-        ]
-        
-        necessary_categories = [
-            'Rent', 'Utilities', 'Insurance', 'Loan Payments',
-            'Education', 'Professional Services', 'Medical',
-            'Child Care', 'Transportation', 'Mortgage', 'Electric',
-            'Water', 'Gas', 'Internet', 'Phone', 'Car Payment',
-            'Student Loan', 'Medical', 'Dental', 'Vision', 'Childcare',
-            'Public Transit', 'Parking', 'Tolls', 'Payment', 'Transfer',
-            'Tax', 'Bank Fees', 'Service Charges'
-        ]
-
-        # Get transactions for each item
-        all_transactions = []
-        cut_back_transactions = []
-        seen_transactions = set()  # For deduplication
-        
-        for item in plaid_items:
-            try:
-                # Get transactions for this item
-                # Get transactions from the last 30 days
-                end_date = date.today()
-                start_date = end_date - timedelta(days=30)
-                
-                transactions_request = plaid.model.transactions_get_request.TransactionsGetRequest(
-                    access_token=item.access_token,
-                    start_date=start_date,
-                    end_date=end_date
-                )
-                
-                response = plaid_client.transactions_get(transactions_request)
-                
-                # Process transactions
-                for transaction in response.transactions:
-                    # Create unique key for deduplication
-                    unique_key = f"{transaction.date}_{transaction.amount}_{transaction.merchant_name}_{transaction.account_id}"
-                    
-                    if unique_key in seen_transactions:
-                        continue
-                    seen_transactions.add(unique_key)
-                    
-                    # Apply account filter if selected
-                    if selected_account and transaction.account_id != selected_account:
-                        continue
-                    
-                    # Get account details
-                    try:
-                        account = PlaidAccount.objects.get(account_id=transaction.account_id)
-                        account_name = account.name
-                        institution_name = account.plaid_item.institution_name
-                        
-                        # Remove 'Plaid' prefix if present
-                        if institution_name and institution_name.startswith('Plaid '):
-                            institution_name = institution_name[6:]  # Remove 'Plaid ' prefix
-                    except PlaidAccount.DoesNotExist:
-                        account_name = "Unknown Account"
-                        institution_name = "Unknown Institution"
-                    
-                    transaction_data = {
-                        'date': transaction.date,
-                        'merchant_name': transaction.merchant_name or transaction.name,
-                        'amount': transaction.amount,
-                        'category': transaction.category[0] if transaction.category else 'Uncategorized',
-                        'account_name': account_name,
-                        'institution': institution_name,
-                        'account_id': transaction.account_id
-                    }
-                    
-                    all_transactions.append(transaction_data)
-                    
-                    # Process transaction for totals
-                    # Determine if it's a credit (money in) or debit (money out)
-                    category = transaction.category[0] if transaction.category else ''
-                    merchant_name = (transaction.merchant_name or transaction.name or '').lower()
-                    amount = Decimal(str(transaction.amount))
-                    
-                    # First check for income categories (Transfers, Deposits, Payroll)
-                    if ('transfer' in category.lower() or 
-                        'deposit' in category.lower() or 
-                        'payroll' in category.lower() or
-                        'payroll' in merchant_name or
-                        'direct deposit' in merchant_name):
-                        # For these categories, positive amount = money in (credit)
-                        is_credit = amount > 0
-                    # Then check for expense categories (Travel, Transportation)
-                    elif ('travel' in category.lower() or 
-                          'transportation' in category.lower() or
-                          'airline' in merchant_name or
-                          'hotel' in merchant_name or
-                          'uber' in merchant_name or
-                          'lyft' in merchant_name):
-                        # Travel services are always expenses (money out)
-                        is_credit = False
-                    # For all other transactions
-                    else:
-                        # For regular transactions, positive amount means expense (money out)
-                        is_credit = amount < 0
-                    
-                    # Calculate the actual amount (positive for income, negative for expenses)
-                    actual_amount = abs(amount) if is_credit else -abs(amount)
-                    
-                    if actual_amount < 0:  # Negative amount means expense
-                        expense_amount = abs(actual_amount)
-                        total_expenses += expense_amount
-                        
-                        # Check if it's a payment-related transaction first
-                        is_payment = (
-                            'payment' in merchant_name or
-                            'transfer' in merchant_name or
-                            category.lower() == 'payment' or
-                            category.lower() == 'transfer'
-                        )
-
-                        if is_payment:
-                            # Payment transactions are necessary expenses
-                            necessary_expenses += expense_amount
-                        else:
-                            # Check if it's a cut back expense
-                            is_cut_back = False
-                            for cut_back in cut_back_categories:
-                                if (cut_back.lower() in category.lower() or 
-                                    cut_back.lower() in merchant_name or
-                                    category.lower() in cut_back.lower()):
-                                    is_cut_back = True
-                                    break
-                            
-                            if is_cut_back:
-                                cut_back_expenses += expense_amount
-                                # Add to cut back transactions list
-                                cut_back_transactions.append({
-                                    'date': transaction.date,
-                                    'merchant_name': transaction.merchant_name or transaction.name,
-                                    'category': category,
-                                    'amount': expense_amount
-                                })
-                            else:
-                                # Check if it's a necessary expense
-                                is_necessary = False
-                                for necessary in necessary_categories:
-                                    if (necessary.lower() in category.lower() or 
-                                        necessary.lower() in merchant_name or
-                                        category.lower() in necessary.lower()):
-                                        is_necessary = True
-                                        break
-                                
-                                if is_necessary:
-                                    necessary_expenses += expense_amount
-                    else:
-                        # Positive amount means income
-                        total_income += actual_amount
-            except Exception as e:
-                print(f"Error processing item {item.id}: {str(e)}")
-                continue
-        
-        # Sort transactions by date (newest first)
-        all_transactions.sort(key=lambda x: x['date'], reverse=True)
-        cut_back_transactions.sort(key=lambda x: x['date'], reverse=True)
-        
-        # Calculate available balance
-        available_balance = current_balance - total_expenses
-        
-        # Calculate cut back percentage
-        cut_back_percentage = (cut_back_expenses / total_expenses * Decimal('100')) if total_expenses > 0 else Decimal('0')
-        
-        # Calculate potential balance (current balance + cut back expenses)
-        potential_balance = current_balance + cut_back_expenses
-        
-        context = {
-            'accounts': accounts,
-            'selected_account': selected_account,
-            'current_balance': current_balance,
-            'total_income': total_income,
-            'total_expenses': total_expenses,
-            'cut_back_expenses': cut_back_expenses,
-            'necessary_expenses': necessary_expenses,
-            'available_balance': available_balance,
-            'cut_back_percentage': cut_back_percentage,
-            'potential_balance': potential_balance,
-            'transactions': all_transactions,
-            'cut_back_transactions': cut_back_transactions
-        }
-        
-        return render(request, 'budget.html', context)
-    except Exception as e:
-        print(f"Error in budget_page: {str(e)}")
-        return render(request, 'budget.html', {
-            'error': str(e),
-            'accounts': [],
-            'current_balance': Decimal('0'),
-            'total_income': Decimal('0'),
-            'total_expenses': Decimal('0'),
-            'cut_back_expenses': Decimal('0'),
-            'necessary_expenses': Decimal('0'),
-            'available_balance': Decimal('0'),
-            'cut_back_percentage': Decimal('0'),
-            'potential_balance': Decimal('0'),
-            'transactions': [],
-            'cut_back_transactions': []
-        })
-
-
-from django.contrib.auth.tokens import default_token_generator
-from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
-from django.utils.encoding import force_bytes
-from django.core.mail import send_mail
-from django.contrib import messages
-
-def password_reset(request):
-    if request.method == 'POST':
-        username = request.POST.get('username')
-        print(f"Password reset requested for username: {username}")
-
-        try:
-            user = User.objects.get(username=username)
-            print(f"Found user: {user.username} with email: {user.email}")
-
-            if not user.email:
-                print("ERROR: User has no email address set!")
-                messages.error(request, 'Your account has no email address set. Please contact support.')
-                return render(request, 'password_reset.html')
-
-            # Generate password reset token
-            token = default_token_generator.make_token(user)
-            uid = urlsafe_base64_encode(force_bytes(user.pk))
-
-            # Build password reset URL
-            reset_url = request.build_absolute_uri(
-                reverse_lazy('password_reset_confirm', kwargs={'uidb64': uid, 'token': token})
-            )
-            print(f"Reset URL: {reset_url}")
-
-            # Send email
-            subject = 'Password Reset Request'
-            message = f'''
-            Hello {user.username},
-
-            You requested to reset your password. Please click the link below to set a new password:
-
-            {reset_url}
-
-            If you didn't request this, you can safely ignore this email.
-
-            Best regards,
-            OverseenBudget Team
-            '''
-
-            print(f"Attempting to send email to: {user.email}")
-            print(f"Using sender email: overseenbudget@gmail.com")
-            try:
-                send_mail(
-                    subject,
-                    message,
-                    'overseenbudget@gmail.com',  # From email - must match EMAIL_HOST_USER
-                    [user.email],  # Send to the email associated with the account
-                    fail_silently=False,
-                )
-                print("Email sent successfully!")
-            except Exception as e:
-                print(f"Error sending email: {str(e)}")
-                print(f"Error type: {type(e)}")
-                print(f"Error details: {e.__dict__ if hasattr(e, '__dict__') else 'No details available'}")
-                messages.error(request, f'Failed to send reset email: {str(e)}')
-                return render(request, 'password_reset.html')
-
-            # Show the success page with the email
-            return render(request, 'password_reset_sent.html', {'email': user.email})
-
-        except User.DoesNotExist:
-            print(f"No user found with username: {username}")
-            messages.error(request, 'No account found with that username.')
-            return render(request, 'password_reset.html')
-
-    return render(request, 'password_reset.html')
-
-def password_reset_confirm(request, uidb64, token):
-    try:
-        # Decode the user ID
-        uid = urlsafe_base64_decode(uidb64).decode()
-        user = User.objects.get(pk=uid)
-
-        # Verify the token
-        if not default_token_generator.check_token(user, token):
-            messages.error(request, 'Password reset link is invalid or has expired.')
-            return redirect('login')
-
-        if request.method == 'POST':
-            new_password1 = request.POST.get('new_password1')
-            new_password2 = request.POST.get('new_password2')
-
-            if new_password1 != new_password2:
-                return render(request, 'password_reset_confirm.html', {
-                    'error': 'Passwords do not match.'
-                })
-
-            if len(new_password1) < 8:
-                return render(request, 'password_reset_confirm.html', {
-                    'error': 'Password must be at least 8 characters long.'
-                })
-
-            # Set the new password
-            user.set_password(new_password1)
-            user.save()
-
-            messages.success(request, 'Your password has been reset successfully. You can now login with your new password.')
-            return redirect('login')
-
-        return render(request, 'password_reset_confirm.html')
-
-    except (TypeError, ValueError, OverflowError, User.DoesNotExist):
-        messages.error(request, 'Password reset link is invalid.')
-        return redirect('login')
-
-@csrf_exempt
-@login_required
-def delete_account(request):
-    try:
-        print(f"Starting account deletion for user: {request.user.username}")
-        print(f"Delete account request received for user: {request.user.username}")
-        print(f"Request method: {request.method}")
-        print(f"Request headers: {request.headers}")
-        print(f"Request body: {request.body}")
-        if request.method != 'POST':
-            print(f"Invalid request method: {request.method}")
-            return JsonResponse({'error': 'Only POST requests are allowed'}, status=405)
-         # Initialize Plaid client
-        try:
-            configuration = plaid.Configuration(
-                host=plaid.Environment.Sandbox,
-                api_key={
-                    'clientId': settings.PLAID_CLIENT_ID,
-                    'secret': settings.PLAID_SECRET,
-                }
-            )
-            api_client = plaid.ApiClient(configuration)
-            plaid_client = plaid_api.PlaidApi(api_client)
-            print("Plaid client initialized successfully")
-        except Exception as e:
-            print(f"Error initializing Plaid client: {str(e)}")
-        # Delete all Plaid items and associated data for the user
-        plaid_items = PlaidItem.objects.filter(user=request.user)
-        print(f"Found {plaid_items.count()} Plaid items to delete")
-        # First, try to remove items from Plaid
-        for item in plaid_items:
-            try:
-                print(f"Attempting to remove Plaid item: {item.item_id}")
-                remove_request = plaid.model.item_remove_request.ItemRemoveRequest(
-                    access_token=item.access_token
-                )
-                plaid_client.item_remove(remove_request)
-                print(f"Successfully removed Plaid item: {item.item_id}")
-            except plaid.ApiException as e:
-                print(f"Error removing item from Plaid: {str(e)}")
-                # Continue with deletion even if Plaid removal fails
-        
-        # Delete all associated data
-        plaid_items.delete()
-        print("Deleted all Plaid items from database")
-        # Delete the user account
-        request.user.delete()
-        try:
-            request.user.delete()
-            user = request.user
-            print(f"Attempting to delete user: {user.username}")
-            user.delete()
-            print(f"Successfully deleted user account: {username}")
-        except Exception as e:
-            print(f"Error deleting user account: {str(e)}")
-            return JsonResponse({'error': f'Failed to delete user account: {str(e)}'}, status=500)
-        # Logout the user
-        logout(request)
-        return JsonResponse({'status': 'success', 'message': 'Account deleted successfully'})
-        
-    except Exception as e:
-        print(f"Error deleting account: {str(e)}")
-        print(f"Error in delete_account view: {str(e)}")
-        print(f"Error type: {type(e)}")
-        print(f"Error details: {e.__dict__ if hasattr(e, '__dict__') else 'No details available'}")
-        return JsonResponse({'error': str(e)}, status=500)

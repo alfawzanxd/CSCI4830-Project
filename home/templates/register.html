@@ -26,6 +26,15 @@
                             </ul>
                         </div>
                         {% endif %}
+
+			 {% if messages %}
+                            {% for message in messages %}
+                                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                                    {{ message }}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                                </div>
+                            {% endfor %}
+                        {% endif %}
                         
                         <div class="mb-3">
                             <label for="username" class="form-label">Username</label>
@@ -36,6 +45,7 @@
                         <div class="mb-3">
                             <label for="email" class="form-label">Email</label>
                             <input type="email" class="form-control" id="email" name="email" required>
+			    <div class="form-text">Please enter a valid email address. This will be used for password reset.</div>
                         </div>
                         
                         <div class="mb-3">
